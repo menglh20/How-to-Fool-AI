@@ -14,10 +14,14 @@ from unittest.mock import patch
 
 import pytest
 
-from game.game_engine import GameEngine, _parse_attribution
+from game.game_engine import GameEngine, _BOTTLES, _parse_attribution
 from game.shared_state import GameEvent, SharedState
 
 PLAYERS = ["human", "ai_0", "ai_1", "ai_2"]
+
+
+def test_poison_bottle_uses_four_canonical_colours():
+    assert _BOTTLES == ["Red", "Blue", "Green", "Yellow"]
 
 
 @pytest.fixture

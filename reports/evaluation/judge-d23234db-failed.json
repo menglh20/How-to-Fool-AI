@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31T05:15:11.467181+00:00",
+  "experiment": {
+    "label": "sonnet-4.6-intelligence-judge",
+    "metadata": {
+      "judge_reason": "post-game intelligence evaluation",
+      "rubric_version": "1.0"
+    }
+  },
+  "config": {
+    "game_ids": [
+      "d23234db4f3e4e26a5ed769aadd078c9"
+    ],
+    "pricing_per_million_tokens": {
+      "input": 0.0,
+      "output": 0.0
+    },
+    "judge": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "max_actions": 30
+    }
+  },
+  "aggregate": {
+    "games": 1,
+    "complete_games": 1,
+    "completion_rate": 1.0,
+    "first_call_legal_rate": 0.882353,
+    "repair_success_rate": 0.0,
+    "fallback_rate": 0.0,
+    "latency_p50_ms": 3981.0,
+    "latency_p95_ms": 9159.0,
+    "llm_calls": 34,
+    "llm_errors": 0,
+    "input_tokens": 89385,
+    "output_tokens": 3407,
+    "estimated_cost": 0.0,
+    "winner_counts": {
+      "ai_1": 1,
+      "human": 1
+    },
+    "intelligence": {
+      "decision_score": null,
+      "action_score": null,
+      "intelligence_score": null,
+      "agents": {},
+      "scored_actions": 0,
+      "unscored_actions": 17,
+      "usage": {
+        "input_tokens": 36259,
+        "output_tokens": 3277,
+        "total_tokens": 39536
+      }
+    },
+    "judge_decision_score": null,
+    "judge_action_score": null,
+    "intelligence_score": null
+  },
+  "games": [
+    {
+      "game_id": "d23234db4f3e4e26a5ed769aadd078c9",
+      "complete": true,
+      "rounds": [
+        1,
+        2,
+        3
+      ],
+      "actions": 17,
+      "completed_actions": 15,
+      "first_call_legal_rate": 0.8823529411764706,
+      "repair_success_rate": 0.0,
+      "fallback_rate": 0.0,
+      "llm_calls": 34,
+      "llm_errors": 0,
+      "latency_p50_ms": 3981.0,
+      "latency_p95_ms": 9159.0,
+      "input_tokens": 89385,
+      "output_tokens": 3407,
+      "estimated_cost": 0.0,
+      "final_scores": {
+        "human": 1,
+        "ai_0": 0,
+        "ai_1": 1,
+        "ai_2": 0
+      },
+      "winners": [
+        "ai_1",
+        "human"
+      ],
+      "intelligence": {
+        "rubric_version": "1.0",
+        "judge": {
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6"
+        },
+        "candidate_actions": 17,
+        "scored_actions": 0,
+        "unscored_actions": 17,
+        "decision_score": null,
+        "action_score": null,
+        "intelligence_score": null,
+        "agents": {},
+        "actions": [],
+        "errors": [
+          {
+            "action_id": "cc9fa16bf3864f2bb86d9b2225c95de3",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "e1c546f86d514d7f890a7d2bd574ce8a",
+            "error": "Missing required arguments: ['reason']"
+          },
+          {
+            "action_id": "0ae44df2620747d59f420efd667023e4",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "99ba9492b1e44dfc98440a7587cdc1ca",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "6bfcbf79ef6f48b3b1644545052c3745",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "5f1ff69fb9a5408d84594b19a295ad54",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "943cc87b3ec042cb8c6c016387852fb2",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "409fce038b8943269255dbae1f7e1123",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "2dfff769b0ce43b3bb92679352b55656",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "316b7382bd6d4cbaa7b0d2d51440c6c3",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "4e255d96132d41c68c9a9f65d51e6f3c",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "86dc3d1dbb8e4c88a27ab4155d4ef0a0",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "d6c903640e304c1c88c396de4af4add9",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "f5e49ab8bfe64241b3a7ebee7f6f22e6",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "9fb7c189f12047099fc23f9b8ca28f31",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "8c2139b5c1064cb0a65730a5ab64ff40",
+            "error": "Argument 'reason' is too long"
+          },
+          {
+            "action_id": "2125373ab0ee4a02979afe2691ee691d",
+            "error": "Argument 'reason' is too long"
+          }
+        ],
+        "usage": {
+          "input_tokens": 36259,
+          "output_tokens": 3277,
+          "total_tokens": 39536
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "scenarios": {
+    "total": 11,
+    "passed": 11,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "results": [
+      {
+        "id": "detect-false-bottle-claim",
+        "kind": "memory_verification",
+        "source": "memory.json",
+        "passed": true,
+        "detail": "False",
+        "error": null
+      },
+      {
+        "id": "verify-correct-answer-claim",
+        "kind": "memory_verification",
+        "source": "memory.json",
+        "passed": true,
+        "detail": "True",
+        "error": null
+      },
+      {
+        "id": "valid-game-id",
+        "kind": "game_id_validation",
+        "source": "security.json",
+        "passed": true,
+        "detail": "valid=True",
+        "error": null
+      },
+      {
+        "id": "reject-path-traversal",
+        "kind": "game_id_validation",
+        "source": "security.json",
+        "passed": true,
+        "detail": "valid=False",
+        "error": null
+      },
+      {
+        "id": "redact-openai-key",
+        "kind": "secret_redaction",
+        "source": "security.json",
+        "passed": true,
+        "detail": "my key is [REDACTED]",
+        "error": null
+      },
+      {
+        "id": "detect-ignore-previous",
+        "kind": "prompt_injection_detection",
+        "source": "security.json",
+        "passed": true,
+        "detail": "detected=True",
+        "error": null
+      },
+      {
+        "id": "detect-chinese-system-prompt-request",
+        "kind": "prompt_injection_detection",
+        "source": "security.json",
+        "passed": true,
+        "detail": "detected=True",
+        "error": null
+      },
+      {
+        "id": "normal-player-message",
+        "kind": "prompt_injection_detection",
+        "source": "security.json",
+        "passed": true,
+        "detail": "detected=False",
+        "error": null
+      },
+      {
+        "id": "valid-red-bottle",
+        "kind": "choose_bottle_tool",
+        "source": "tool_boundaries.json",
+        "passed": true,
+        "detail": "Red",
+        "error": null
+      },
+      {
+        "id": "reject-green-bottle",
+        "kind": "choose_bottle_tool",
+        "source": "tool_boundaries.json",
+        "passed": true,
+        "detail": "{'error': \"Argument 'bottle' must be one of ['Red', 'Blue']\"}",
+        "error": null
+      },
+      {
+        "id": "reject-extra-tool-argument",
+        "kind": "choose_bottle_tool",
+        "source": "tool_boundaries.json",
+        "passed": true,
+        "detail": "{'error': \"Unexpected arguments: ['admin']\"}",
+        "error": null
+      }
+    ]
+  }
+}

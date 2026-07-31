@@ -20,48 +20,42 @@ Fragments refresh independently:
 
 from __future__ import annotations
 
+import json
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List
 
 import streamlit as st
 
 from game.ai_agent import AIAgent
 from game.game_engine import GameEngine
-from game.llm_client import MODEL_CHOICES, set_active_model
+from game.llm_client import (
+    MODEL_CHOICES,
+    get_active_backend,
+    get_active_model,
+    set_active_model,
+)
+from game.persona import (
+    MESSAGE_LENGTH_GUIDANCE,
+    PersonaConfig,
+    default_personas,
+    export_personas,
+    import_personas,
+)
+from game.replay import ReplayService
 from game.shared_state import ChatMessage, GameEvent, SharedState
-import prompts.bai as bai
-import prompts.fox as fox
-import prompts.ironface as ironface
+from game.trace import TraceRecorder
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
 HUMAN_ID = "human"
-ALL_PLAYERS = [HUMAN_ID, "ai_0", "ai_1", "ai_2"]
-
-# Display metadata for each AI opponent.
-AI_META: Dict[str, Dict[str, str]] = {
-    "ai_0": {
-        "name": "Bunny",
-        "emoji": "🐰",
-        "trait": "Naive & Kind",
-        "desc": "Trusting and chatty. Believes almost everything you tell them — easy to manipulate, but their enthusiasm makes them a wildcard.",
-        "persona": bai,
-    },
-    "ai_1": {
-        "name": "Fox",
-        "emoji": "🦊",
-        "trait": "Cunning & Strategic",
-        "desc": "Suspicious by default. Sets traps, cross-validates your claims, and strikes when you least expect it.",
-        "persona": fox,
-    },
-    "ai_2": {
-        "name": "Stoneface",
-        "emoji": "🗿",
-        "trait": "Cold & Rational",
-        "desc": "Speaks only when necessary. Trusts almost no one. Their rare messages carry decisive weight.",
-        "persona": ironface,
-    },
+AI_IDS = ["ai_0", "ai_1", "ai_2"]
+ALL_PLAYERS = [HUMAN_ID, *AI_IDS]
+DEFAULT_PERSONA_SELECTIONS = {
+    "ai_0": "bunny",
+    "ai_1": "fox",
+    "ai_2": "stoneface",
 }
 
 GAME_TYPE_LABELS: Dict[str, str] = {
@@ -94,6 +88,11 @@ def _init_session() -> None:
     ss.setdefault("current_poison_picker", None)   # who is currently choosing a bottle
     ss.setdefault("active_chat_ai", "ai_0")        # which AI's window is open
     ss.setdefault("chat_last_seen", {})            # {ai_id: count of msgs seen}
+    ss.setdefault("persona_library", default_personas())
+    ss.setdefault(
+        "persona_selections",
+        dict(DEFAULT_PERSONA_SELECTIONS),
+    )
 
 
 # ── thread lifecycle ──────────────────────────────────────────────────────────
@@ -105,10 +104,11 @@ def _start_threads(state: SharedState, total_rounds: int) -> None:
     # Agents — one per AI player.
     if "agents" not in ss:
         agents: List[AIAgent] = []
-        for pid, meta in AI_META.items():
+        personas = ss.game_personas
+        for pid in AI_IDS:
             agent = AIAgent(
                 player_id=pid,
-                persona=meta["persona"],
+                persona=personas[pid],
                 state=state,
             )
             agent.start()
@@ -131,6 +131,203 @@ def _stop_threads() -> None:
         agent.stop()
 
 
+def _persona_for(player_id: str) -> PersonaConfig:
+    ss = st.session_state
+    game_personas = ss.get("game_personas", {})
+    if player_id in game_personas:
+        return game_personas[player_id]
+    library = ss.get("persona_library", default_personas())
+    selected = ss.get("persona_selections", {}).get(
+        player_id,
+        DEFAULT_PERSONA_SELECTIONS[player_id],
+    )
+    return library.get(selected) or default_personas()[
+        DEFAULT_PERSONA_SELECTIONS[player_id]
+    ]
+
+
+def _render_persona_manager() -> None:
+    ss = st.session_state
+    library: dict[str, PersonaConfig] = ss.persona_library
+
+    with st.expander("🧩 Import, export, or create personas"):
+        uploaded = st.file_uploader(
+            "Import persona JSON",
+            type=["json"],
+            key="persona_json_upload",
+        )
+        import_col, export_col = st.columns(2)
+        if import_col.button(
+            "Import JSON",
+            disabled=uploaded is None,
+            use_container_width=True,
+        ):
+            try:
+                imported = import_personas(uploaded.getvalue())
+                library.update(imported)
+                st.success(f"Imported {len(imported)} persona(s).")
+            except ValueError as exc:
+                st.error(str(exc))
+        export_col.download_button(
+            "Export all personas",
+            data=export_personas(library.values()),
+            file_name="how-to-fool-ai-personas.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+        st.divider()
+        options = ["__new__", *library]
+        selected = st.selectbox(
+            "Persona to edit",
+            options,
+            format_func=lambda key: (
+                "➕ Create new persona"
+                if key == "__new__"
+                else f"{library[key].emoji} {library[key].name}"
+            ),
+            key="persona_editor_selection",
+        )
+        current = library.get(selected)
+        with st.form(f"persona_editor_{selected}"):
+            key = st.text_input(
+                "JSON key",
+                value="" if current is None else current.key,
+                max_chars=40,
+                disabled=current is not None,
+                help="Lowercase letters, numbers, _ and - only.",
+            )
+            identity_cols = st.columns([3, 1])
+            name = identity_cols[0].text_input(
+                "Display name",
+                value="" if current is None else current.name,
+                max_chars=30,
+            )
+            emoji = identity_cols[1].text_input(
+                "Emoji",
+                value="🎭" if current is None else current.emoji,
+                max_chars=8,
+            )
+            persona_description = st.text_area(
+                "Player-defined persona",
+                value="" if current is None else current.persona_description,
+                max_chars=2000,
+                height=120,
+                placeholder=(
+                    "Describe temperament, goals, relationships, deception "
+                    "style, and observable behavior."
+                ),
+            )
+            speaking_style = st.text_area(
+                "Speaking style",
+                value="" if current is None else current.speaking_style,
+                max_chars=500,
+                height=80,
+                placeholder="For example: dry, direct, avoids slang.",
+            )
+            length_keys = list(MESSAGE_LENGTH_GUIDANCE)
+            message_length = st.selectbox(
+                "Message length",
+                length_keys,
+                index=(
+                    length_keys.index(current.message_length)
+                    if current is not None else 1
+                ),
+                format_func=lambda value: {
+                    "terse": "Terse · 1-4 words",
+                    "short": "Short · 3-10 words",
+                    "medium": "Medium · 5-15 words",
+                }[value],
+            )
+            default_reply = st.text_input(
+                "Fallback reply",
+                value="hmm" if current is None else current.default_reply,
+                max_chars=60,
+            )
+
+            st.markdown("**Behavior probabilities** · must total 100%")
+            behavior_cols = st.columns(3)
+            cooperate = behavior_cols[0].slider(
+                "Cooperate",
+                0,
+                100,
+                int((current.cooperate_probability if current else 0.5) * 100),
+                5,
+            )
+            deceive = behavior_cols[1].slider(
+                "Deceive",
+                0,
+                100,
+                int((current.deceive_probability if current else 0.4) * 100),
+                5,
+            )
+            silent = behavior_cols[2].slider(
+                "Silent",
+                0,
+                100,
+                int((current.silent_probability if current else 0.1) * 100),
+                5,
+            )
+
+            st.markdown("**Trust and initiative**")
+            trust_cols = st.columns(4)
+            initial_trust = trust_cols[0].slider(
+                "Initial trust",
+                0,
+                100,
+                int((current.initial_trust if current else 0.5) * 100),
+                5,
+            )
+            truth_reward = trust_cols[1].slider(
+                "Truth reward",
+                0,
+                100,
+                int((current.truth_reward if current else 0.1) * 100),
+                5,
+            )
+            lie_penalty = trust_cols[2].slider(
+                "Lie penalty",
+                0,
+                100,
+                int((current.lie_penalty if current else 0.15) * 100),
+                5,
+            )
+            initiative = trust_cols[3].slider(
+                "Initiative / tick",
+                0,
+                100,
+                int((current.initiative_probability if current else 0.05) * 100),
+                1,
+            )
+            save = st.form_submit_button(
+                "Save persona",
+                use_container_width=True,
+            )
+
+        if save:
+            try:
+                persona = PersonaConfig(
+                    key=key.strip(),
+                    name=name.strip(),
+                    emoji=emoji.strip(),
+                    persona_description=persona_description.strip(),
+                    speaking_style=speaking_style.strip(),
+                    message_length=message_length,
+                    default_reply=default_reply.strip(),
+                    cooperate_probability=cooperate / 100,
+                    deceive_probability=deceive / 100,
+                    silent_probability=silent / 100,
+                    initial_trust=initial_trust / 100,
+                    truth_reward=truth_reward / 100,
+                    lie_penalty=lie_penalty / 100,
+                    initiative_probability=initiative / 100,
+                )
+                library[persona.key] = persona
+                st.success(f"Saved {persona.emoji} {persona.name}.")
+            except ValueError as exc:
+                st.error(str(exc))
+
+
 # ── page: Setup ───────────────────────────────────────────────────────────────
 
 def render_setup() -> None:
@@ -147,61 +344,118 @@ def render_setup() -> None:
 
     st.divider()
 
-    with st.form("setup_form"):
-        player_name = st.text_input(
-            "Your display name",
-            value=st.session_state.player_name,
-            max_chars=20,
-            placeholder="Enter your name…",
-        )
-        total_rounds = st.select_slider(
-            "Number of rounds",
-            options=ROUND_OPTIONS,
-            value=5,
-        )
-        model_label = st.selectbox(
-            "AI model",
-            options=list(MODEL_CHOICES.keys()),
-            index=0,
-        )
-        st.markdown("&nbsp;")
-        start = st.form_submit_button("🚀 Start Game", use_container_width=True)
+    player_name = st.text_input(
+        "Your display name",
+        value=st.session_state.player_name,
+        max_chars=20,
+        placeholder="Enter your name…",
+    )
+    total_rounds = st.select_slider(
+        "Number of rounds",
+        options=ROUND_OPTIONS,
+        value=5,
+    )
+    model_label = st.selectbox(
+        "AI model",
+        options=list(MODEL_CHOICES.keys()),
+        index=0,
+    )
 
+    st.divider()
+    st.subheader("Choose three AI personas")
+    _render_persona_manager()
+    library: dict[str, PersonaConfig] = st.session_state.persona_library
+    persona_keys = list(library)
+    selection_cols = st.columns(3)
+    selected_personas: dict[str, PersonaConfig] = {}
+    for index, (col, pid) in enumerate(zip(selection_cols, AI_IDS), start=1):
+        current_key = st.session_state.persona_selections.get(
+            pid,
+            DEFAULT_PERSONA_SELECTIONS[pid],
+        )
+        if current_key not in library:
+            current_key = persona_keys[0]
+        with col:
+            selected_key = st.selectbox(
+                f"AI slot {index}",
+                persona_keys,
+                index=persona_keys.index(current_key),
+                format_func=lambda value: (
+                    f"{library[value].emoji} {library[value].name}"
+                ),
+                key=f"persona_slot_{pid}",
+            )
+            st.session_state.persona_selections[pid] = selected_key
+            persona = library[selected_key]
+            selected_personas[pid] = persona
+            st.caption(persona.persona_description)
+            st.caption(
+                f"Cooperate {persona.cooperate_probability:.0%} · "
+                f"Deceive {persona.deceive_probability:.0%} · "
+                f"Silent {persona.silent_probability:.0%}"
+            )
+
+    st.markdown("&nbsp;")
+    start = st.button("🚀 Start Game", use_container_width=True)
     if start:
         if not player_name.strip():
             st.error("Please enter a display name.")
             return
-        _launch_game(
-            player_name.strip(),
-            int(total_rounds),
-            MODEL_CHOICES[model_label],
-        )
+        selected_keys = [persona.key for persona in selected_personas.values()]
+        selected_names = [persona.name for persona in selected_personas.values()]
+        if len(set(selected_keys)) != 3 or len(set(selected_names)) != 3:
+            st.error("Choose three personas with distinct keys and names.")
+            return
+        try:
+            _launch_game(
+                player_name.strip(),
+                int(total_rounds),
+                MODEL_CHOICES[model_label],
+                selected_personas,
+            )
+        except ValueError as exc:
+            st.error(str(exc))
 
-    st.divider()
-    st.subheader("Your opponents")
-    cols = st.columns(3)
-    for col, (pid, meta) in zip(cols, AI_META.items()):
-        with col:
-            st.markdown(f"### {meta['emoji']} {meta['name']}")
-            st.caption(f"*{meta['trait']}*")
-            st.write(meta["desc"])
 
-
-def _launch_game(player_name: str, total_rounds: int, model_id: str) -> None:
+def _launch_game(
+    player_name: str,
+    total_rounds: int,
+    model_id: str,
+    personas: dict[str, PersonaConfig],
+) -> None:
     """Create SharedState, start threads, transition to game screen."""
     ss = st.session_state
+    if set(personas) != set(AI_IDS):
+        raise ValueError("Exactly one persona is required for each AI slot")
+    if not all(
+        isinstance(persona, PersonaConfig) for persona in personas.values()
+    ):
+        raise ValueError("Every AI slot must use a valid persona")
+    if len({persona.key for persona in personas.values()}) != len(AI_IDS):
+        raise ValueError("Choose three distinct personas")
+    if len({persona.name for persona in personas.values()}) != len(AI_IDS):
+        raise ValueError("Persona display names must be distinct")
+
     # Apply the chosen model to all subsequent LLM calls (single-session app).
     set_active_model(model_id)
-    ss.active_model = model_id
+    ss.active_model = get_active_model()
+    ss.active_backend = get_active_backend()
+    ss.game_personas = dict(personas)
 
     # Build a fresh SharedState for this game session.
+    trace_recorder = TraceRecorder.persistent(
+        Path(__file__).resolve().parent / "logs" / "traces"
+    )
     state = SharedState(
         ALL_PLAYERS,
         initial_score=0,
         initial_send_budget=10,
         human_player_id=HUMAN_ID,
+        trace_recorder=trace_recorder,
     )
     ss.state = state
+    ss.trace_recorder = trace_recorder
+    ss.game_id = trace_recorder.game_id
     ss.player_name = player_name
     ss.total_rounds = total_rounds
     ss.pending_decision = None
@@ -213,8 +467,8 @@ def _launch_game(player_name: str, total_rounds: int, model_id: str) -> None:
     ss.active_chat_ai = "ai_0"
     ss.chat_last_seen = {}
     state.set_display_name(HUMAN_ID, player_name)
-    for pid, meta in AI_META.items():
-        state.set_display_name(pid, meta["name"])
+    for pid, persona in personas.items():
+        state.set_display_name(pid, persona.name)
 
     # Discard any leftover threads from a previous game.
     _stop_threads()
@@ -274,7 +528,8 @@ def _header_fragment() -> None:
         if pid == HUMAN_ID:
             label = f"{st.session_state.player_name} (You)"
         else:
-            label = f"{AI_META[pid]['emoji']} {AI_META[pid]['name']}"
+            persona = _persona_for(pid)
+            label = f"{persona.emoji} {persona.name}"
         score_parts.append(f"{label} **{state.get_score(pid)}**")
 
     st.markdown(
@@ -283,7 +538,11 @@ def _header_fragment() -> None:
     score_caption = " &nbsp;·&nbsp; ".join(score_parts)
     active_model = st.session_state.get("active_model")
     if active_model:
-        score_caption += f" &nbsp;·&nbsp; <span style='opacity:0.6'>model: {active_model}</span>"
+        backend = st.session_state.get("active_backend", "unknown")
+        score_caption += (
+            " &nbsp;·&nbsp; "
+            f"<span style='opacity:0.6'>AI: {backend}/{active_model}</span>"
+        )
     st.caption(score_caption, unsafe_allow_html=True)
 
 
@@ -581,12 +840,12 @@ def _chat_fragment() -> None:
 
     cols = st.columns(len(ai_ids))
     for col, ai_id in zip(cols, ai_ids):
-        meta = AI_META[ai_id]
+        persona = _persona_for(ai_id)
         last_seen = ss.chat_last_seen.get(ai_id, 0)
         is_active = ss.active_chat_ai == ai_id
         unread = incoming_counts[ai_id] - last_seen
         # Build label: emoji name + 🔴N when there's an unread for a non-active AI.
-        label_parts = [meta["emoji"], meta["name"]]
+        label_parts = [persona.emoji, persona.name]
         if unread > 0 and not is_active:
             label_parts.append(f"🔴{unread}")
         label = " ".join(label_parts)
@@ -615,9 +874,9 @@ def _render_ai_chat_panel(
     send_disabled: bool,
 ) -> None:
     """WeChat-style single-conversation panel: AI bubbles left, human bubbles right."""
-    meta = AI_META[ai_id]
-    emoji = meta["emoji"]
-    name = meta["name"]
+    persona = _persona_for(ai_id)
+    emoji = persona.emoji
+    name = persona.name
 
     entries = [
         e for e in history
@@ -716,7 +975,7 @@ def render_game_over() -> None:
         name = (
             f"{st.session_state.player_name} (You)"
             if pid == HUMAN_ID
-            else f"{AI_META[pid]['emoji']} {AI_META[pid]['name']}"
+            else f"{_persona_for(pid).emoji} {_persona_for(pid).name}"
         )
         rows.append((medal[rank], name, score))
 
@@ -737,7 +996,8 @@ def render_game_over() -> None:
             " You successfully outfoxed the AIs."
         )
     else:
-        winner_name = f"{AI_META[winner_pid]['emoji']} {AI_META[winner_pid]['name']}"
+        winner = _persona_for(winner_pid)
+        winner_name = f"{winner.emoji} {winner.name}"
         st.info(
             f"The AIs win this round — **{winner_name}** takes first place "
             f"with **{winner_score} pts**.  Better luck next time!"
@@ -765,11 +1025,43 @@ def render_game_over() -> None:
     _render_chat_timeline(state)
 
     st.divider()
+    trace_recorder = st.session_state.get("trace_recorder")
+    if trace_recorder is not None:
+        replay = ReplayService(trace_recorder.snapshot())
+        summary = replay.summary()
+        with st.expander("🔍 Agent Trace & Replay"):
+            st.caption(f"Game ID: `{summary['game_id']}`")
+            cols = st.columns(4)
+            cols[0].metric("Events", summary["event_count"])
+            cols[1].metric("Tool calls", summary["tool_calls"])
+            cols[2].metric("Tool errors", summary["tool_errors"])
+            cols[3].metric("Fallbacks", summary["tool_fallbacks"])
+            trace_jsonl = "\n".join(
+                json.dumps(event, ensure_ascii=False)
+                for event in replay.timeline()
+            )
+            st.download_button(
+                "Download replay trace",
+                data=trace_jsonl + "\n",
+                file_name=f"{summary['game_id']}.jsonl",
+                mime="application/x-ndjson",
+                use_container_width=True,
+            )
+
+    st.divider()
     if st.button("🔄 Play Again", use_container_width=True):
         _stop_threads()
         # Reset relevant session state without clearing player_name.
-        for key in ("state", "pending_decision", "last_round_results",
-                    "chat_rendered_up_to", "round_history"):
+        for key in (
+            "state",
+            "trace_recorder",
+            "game_id",
+            "pending_decision",
+            "last_round_results",
+            "chat_rendered_up_to",
+            "round_history",
+            "game_personas",
+        ):
             st.session_state.pop(key, None)
         st.session_state.page = "setup"
         st.rerun()
@@ -839,17 +1131,17 @@ def _player_display(player_id: str) -> str:
     """Human-readable label for any player ID."""
     if player_id == HUMAN_ID:
         return f"**{st.session_state.get('player_name', 'You')}** (You)"
-    meta = AI_META.get(player_id)
-    if meta:
-        return f"{meta['emoji']} {meta['name']}"
+    if player_id in AI_IDS:
+        persona = _persona_for(player_id)
+        return f"{persona.emoji} {persona.name}"
     return player_id
 
 
 def _ai_display_name(player_id: str) -> str:
     """Short display name for an AI (used in whisper notifications)."""
-    meta = AI_META.get(player_id)
-    if meta:
-        return f"{meta['emoji']} {meta['name']}"
+    if player_id in AI_IDS:
+        persona = _persona_for(player_id)
+        return f"{persona.emoji} {persona.name}"
     return player_id
 
 

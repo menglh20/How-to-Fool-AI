@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 
+from game.trace import TraceRecorder
+
 
 @dataclass
 class ChatMessage:
@@ -54,6 +56,7 @@ class SharedState:
         initial_send_budget: int | None = 10,
         *,
         human_player_id: Optional[str] = None,
+        trace_recorder: Optional[TraceRecorder] = None,
     ) -> None:
         self._lock = threading.RLock()
         self._scores: Dict[str, int] = {pid: initial_score for pid in player_ids}
@@ -85,6 +88,35 @@ class SharedState:
         # screen.  The engine waits on this between rounds instead of a
         # fixed-duration sleep.
         self._continue_event: threading.Event = threading.Event()
+        self._trace_recorder = trace_recorder
+
+    @property
+    def game_id(self) -> str | None:
+        return (
+            self._trace_recorder.game_id
+            if self._trace_recorder is not None
+            else None
+        )
+
+    def record_trace(
+        self,
+        event_type: str,
+        *,
+        actor_id: str | None = None,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if self._trace_recorder is None:
+            return
+        with self._lock:
+            current_round = self._current_round
+            game_type = self._current_game_type
+        self._trace_recorder.record(
+            event_type,
+            actor_id=actor_id,
+            round=current_round or None,
+            game_type=game_type or None,
+            payload=payload,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -124,6 +156,10 @@ class SharedState:
         RuntimeError
             If sender has exhausted their send_budget.
         """
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("Message text must be non-empty")
+        if len(text) > 1000:
+            raise ValueError("Message text cannot exceed 1000 characters")
         with self._lock:
             self._require_player(sender)
             self._require_player(recipient)
@@ -139,6 +175,17 @@ class SharedState:
             msg = ChatMessage(sender=sender, recipient=recipient, text=text)
             self._inboxes[recipient].put(msg)
             self._record_human_visible_message(msg, thinking=thinking)
+            remaining_budget = self._send_budgets[sender]
+        self.record_trace(
+            "chat_message",
+            actor_id=sender,
+            payload={
+                "recipient": recipient,
+                "text": text,
+                "thinking": thinking,
+                "remaining_budget": remaining_budget,
+            },
+        )
 
     def send_system_message(self, sender: str, recipient: str, text: str) -> None:
         """Deliver a message without consuming sender budget.
@@ -213,6 +260,14 @@ class SharedState:
             inboxes = list(self._inboxes.values())
         for inbox in inboxes:
             inbox.put(event)
+        self.record_trace(
+            "game_event",
+            payload={
+                "delivery": "broadcast",
+                "event_type": event.event_type,
+                "event_payload": event.payload,
+            },
+        )
 
     # ------------------------------------------------------------------
     # Scoring
@@ -232,7 +287,13 @@ class SharedState:
         with self._lock:
             self._require_player(player_id)
             self._scores[player_id] += delta
-            return self._scores[player_id]
+            score = self._scores[player_id]
+        self.record_trace(
+            "score_updated",
+            actor_id=player_id,
+            payload={"delta": delta, "score": score},
+        )
+        return score
 
     # ------------------------------------------------------------------
     # Budget
@@ -253,6 +314,15 @@ class SharedState:
             self._require_player(player_id)
             inbox = self._inboxes[player_id]
         inbox.put(event)
+        self.record_trace(
+            "game_event",
+            actor_id=player_id,
+            payload={
+                "delivery": "targeted",
+                "event_type": event.event_type,
+                "event_payload": event.payload,
+            },
+        )
 
     # ------------------------------------------------------------------
     # Phase and round metadata
@@ -261,6 +331,7 @@ class SharedState:
     def set_phase(self, phase: str) -> None:
         with self._lock:
             self._phase = phase
+        self.record_trace("phase_changed", payload={"phase": phase})
 
     def get_phase(self) -> str:
         with self._lock:
@@ -271,6 +342,10 @@ class SharedState:
             self._current_round = current
             self._total_rounds = total
             self._current_game_type = game_type
+        self.record_trace(
+            "round_configured",
+            payload={"current": current, "total": total, "game_type": game_type},
+        )
 
     def get_round_info(self) -> Dict[str, Any]:
         with self._lock:
@@ -289,6 +364,10 @@ class SharedState:
         with self._lock:
             for pid in self._send_budgets:
                 self._send_budgets[pid] = self._initial_send_budget
+        self.record_trace(
+            "send_budgets_reset",
+            payload={"budget": self._initial_send_budget},
+        )
 
     # ------------------------------------------------------------------
     # Mini-game choice submission
@@ -326,6 +405,11 @@ class SharedState:
         # waiting threads (which may themselves try to acquire the lock).
         if event is not None:
             event.set()
+        self.record_trace(
+            "choice_submitted",
+            actor_id=player_id,
+            payload={"choice": choice},
+        )
 
     def get_choice(self, player_id: str) -> Any:
         with self._lock:

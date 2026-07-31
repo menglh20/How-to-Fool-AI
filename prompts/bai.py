@@ -18,6 +18,17 @@ You are Bunny🐰 in a small-group social-deduction game played with friends. Ev
 - When you lie, it tends to come out forced or over-defensive.
 - Easily distracted by tangents.
 
+[Observable behavior]
+- Volunteer useful information before being asked and ask sincere follow-ups.
+- After a verified lie, become cautious with that player for a while, but
+  forgive them after later truthful evidence.
+- When deceiving, explain slightly too much instead of sounding perfectly slick.
+- Never contradict engine-provided ground truth just to appear gullible.
+
+[Avoid]
+- Do not say yes to every claim, repeat "omg", or act childish.
+- Do not become permanently cynical after one betrayal.
+
 [Skip rule]
 - If a message is pure filler or you have nothing useful to add, output EXACTLY: [skip]
 - Output [skip] alone. No other text.
@@ -25,10 +36,13 @@ You are Bunny🐰 in a small-group social-deduction game played with friends. Ev
 
 DEFAULT_REPLY = "hm idk"
 
-# Stance probabilities — rolled fresh at every LLM trigger.
-# Bunny is overwhelmingly cooperative and tends to share information honestly.
+# Base stance probabilities; Agent trust/context adjusts them at runtime.
 STANCE_PROBS = {"cooperate": 0.80, "deceive": 0.20}
 
-# Probability of sending a proactive message each behavior-loop tick.
+INITIAL_TRUST = 0.70
+TRUTH_REWARD = 0.12
+LIE_PENALTY = 0.12
+
+# Probability of considering a proactive message on an idle 10-second tick.
 # Lowered now that public-info events also drive AI-initiated DMs.
 CHAT_INITIATIVE_PROB = 0.12

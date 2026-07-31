@@ -42,10 +42,10 @@ from game.shared_state import GameEvent, SharedState
 # Rotation order for mini-game types.
 _GAME_TYPES: List[str] = ["guess_the_word", "who_wrote_it", "poison_bottle"]
 
-# Bottle colours used in Poison Bottle.  Two bottles: one poisoned, one safe.
+# Bottle colours used in Poison Bottle. One of the four is poisoned.
 # Bottles are returned to the pool after each pick, so every player faces the
-# same two-bottle choice; only the selection order leaks score ranking.
-_BOTTLES: List[str] = ["Red", "Blue"]
+# same four-bottle choice; only the selection order leaks score ranking.
+_BOTTLES: List[str] = ["Red", "Blue", "Green", "Yellow"]
 
 # Fall-back English words used when a player times out on a write-word prompt.
 _FALLBACK_WORDS: List[str] = [
@@ -171,9 +171,8 @@ class GameEngine(threading.Thread):
                 p for p in all_players if p != writer_id
             ]
         elif game_type == "poison_bottle":
-            # The pick order is purely a function of current scores
-            # (already public) — fold it into the round announcement so
-            # every AI knows from t=0 who picks 1st/2nd/3rd/4th.
+            # Exact scores stay private. The score-derived pick order is the
+            # intentional public signal, so include only that ordering.
             from game.scoring import get_poison_bottle_order
             all_players = self.state.player_ids
             scores = {pid: self.state.get_score(pid) for pid in all_players}
@@ -448,10 +447,10 @@ class GameEngine(threading.Thread):
     ) -> Dict[str, Any]:
         """Run one round of Poison Bottle and return a results dict.
 
-        Two bottles (one poisoned, one safe) are presented to every player.
+        Four bottles (one poisoned) are presented to every player.
         Players choose in score-ranked order (highest first); bottles are
         returned to the pool after each pick, so every player faces the same
-        two-bottle choice.  Each chooser is informed immediately, via a
+        four-bottle choice.  Each chooser is informed immediately, via a
         targeted ``poison_result`` event, whether their pick was poisoned.
 
         *selection_order* is pre-computed in :meth:`_run_round` so it can be

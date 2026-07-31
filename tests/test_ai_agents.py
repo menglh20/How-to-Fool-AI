@@ -9,8 +9,6 @@ Run with:
 
 from __future__ import annotations
 
-import os
-import threading
 import time
 from unittest.mock import MagicMock, patch
 
@@ -18,6 +16,7 @@ import pytest
 
 from game.shared_state import ChatMessage, GameEvent, SharedState
 from game.ai_agent import AIAgent
+from game.llm_client import MockLLMClient
 import prompts.bai as bai
 import prompts.fox as fox
 import prompts.ironface as ironface
@@ -40,7 +39,13 @@ def state():
 
 
 def _make_agent(player_id: str, state: SharedState) -> AIAgent:
-    return AIAgent(player_id=player_id, persona=PERSONAS[player_id], state=state)
+    return AIAgent(
+        player_id=player_id,
+        persona=PERSONAS[player_id],
+        state=state,
+        llm_client=MockLLMClient(),
+        tick_seconds=0.01,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -77,12 +82,8 @@ def test_agents_stop_cleanly(state):
 
 
 # ---------------------------------------------------------------------------
-# 2. Reply within 3 seconds (LLM stubbed)
+# 2. Reply on the next tick (LLM stubbed)
 # ---------------------------------------------------------------------------
-
-def _stub_call_llm(system_prompt, messages, default_reply, **kwargs):
-    """Instant stand-in for the real LLM call — returns default_reply."""
-    return default_reply
 
 
 @pytest.mark.parametrize("player_id,persona,expected_reply", [
@@ -90,13 +91,22 @@ def _stub_call_llm(system_prompt, messages, default_reply, **kwargs):
     ("ai_1", fox,       fox.DEFAULT_REPLY),
     ("ai_2", ironface,  ironface.DEFAULT_REPLY),
 ])
-def test_agent_replies_within_3s(player_id, persona, expected_reply, state):
-    """Send a message to an agent; it should reply within 3 seconds."""
+def test_agent_replies_on_next_tick(player_id, persona, expected_reply, state):
+    """Send a message to an agent; it should reply on the next test tick."""
     sender = next(p for p in PLAYERS if p != player_id)
 
-    with patch("game.llm_client.call_llm", side_effect=_stub_call_llm), \
-         patch.object(AIAgent, "_pick_stance", return_value="cooperate"):
-        agent = AIAgent(player_id=player_id, persona=persona, state=state)
+    with patch.object(
+        AIAgent,
+        "_pick_stance",
+        return_value="cooperate",
+    ):
+        agent = AIAgent(
+            player_id=player_id,
+            persona=persona,
+            state=state,
+            llm_client=MockLLMClient(),
+            tick_seconds=0.01,
+        )
         agent.start()
         try:
             # Deliver a message to the agent's inbox.
@@ -191,7 +201,8 @@ def test_persona_ids(persona, expected_id):
 @pytest.mark.parametrize("persona", [bai, fox, ironface])
 def test_persona_has_required_attributes(persona):
     for attr in ("PERSONA_ID", "NAME", "EMOJI", "SYSTEM_PROMPT",
-                 "DEFAULT_REPLY", "CHAT_INITIATIVE_PROB"):
+                 "DEFAULT_REPLY", "CHAT_INITIATIVE_PROB", "INITIAL_TRUST",
+                 "TRUTH_REWARD", "LIE_PENALTY"):
         assert hasattr(persona, attr), f"{persona.__name__} missing {attr!r}"
 
 
@@ -199,6 +210,131 @@ def test_initiative_probs_ordering():
     """Bunny initiative > Fox > Stoneface (personality hierarchy)."""
     assert bai.CHAT_INITIATIVE_PROB > fox.CHAT_INITIATIVE_PROB
     assert fox.CHAT_INITIATIVE_PROB > ironface.CHAT_INITIATIVE_PROB
+
+
+def test_personas_use_distinct_trust_profiles(state):
+    memories = {
+        pid: _make_agent(pid, state).memory
+        for pid in PLAYERS
+    }
+    assert memories["ai_0"].initial_trust > memories["ai_1"].initial_trust
+    assert memories["ai_1"].initial_trust > memories["ai_2"].initial_trust
+    assert memories["ai_2"].lie_penalty > memories["ai_0"].lie_penalty
+
+
+def test_visible_scores_hide_other_players(state):
+    state.update_score("ai_0", 2)
+    state.update_score("ai_1", 5)
+    visible = _make_agent("ai_0", state)._visible_scores()
+    assert visible["ai_0"] == 2
+    assert visible["ai_1"] == "hidden"
+    assert visible["ai_2"] == "hidden"
+
+
+def test_direct_chat_stance_is_stable_within_a_round(state):
+    state.set_round_info(1, 3, "poison_bottle")
+    agent = _make_agent("ai_1", state)
+    with patch(
+        "game.ai_agent.random.choices",
+        return_value=["deceive"],
+    ) as choose:
+        first = agent._pick_stance(
+            trigger="chat_reply",
+            counterpart="ai_0",
+        )
+        second = agent._pick_stance(
+            trigger="chat_reply",
+            counterpart="ai_0",
+        )
+        state.set_round_info(2, 3, "poison_bottle")
+        third = agent._pick_stance(
+            trigger="chat_reply",
+            counterpart="ai_0",
+        )
+    assert first == second == third == "deceive"
+    assert choose.call_count == 2
+
+
+def test_private_game_action_never_uses_deception_stance(state):
+    agent = _make_agent("ai_1", state)
+    assert agent._pick_stance(trigger="game_decision") == "cooperate"
+
+
+def test_decision_prompt_requests_summary_not_chain_of_thought():
+    from prompts.templates import build_chat_reply_decision_prompt
+
+    prompt = build_chat_reply_decision_prompt(
+        sender_name="Bunny",
+        incoming_text="Blue is safe",
+        score=1,
+        send_budget=5,
+    )
+    assert "GOAL:" in prompt
+    assert "BELIEF:" in prompt
+    assert "INTENT:" in prompt
+    assert "REASONING:" not in prompt
+
+
+def test_poison_picker_event_can_trigger_outbound(state):
+    agent = _make_agent("ai_1", state)
+    agent._round_state = {
+        "game_type": "poison_bottle",
+        "selection_order": PLAYERS,
+        "picked_so_far": [],
+    }
+    with patch.object(
+        agent,
+        "_maybe_outbound_for_event",
+    ) as outbound:
+        agent._handle_event(GameEvent(
+            "poison_picker_change",
+            {
+                "picker": "ai_0",
+                "position": 1,
+                "selection_order": PLAYERS,
+            },
+        ))
+    assert outbound.call_args.kwargs["trigger"] == "poison_picker_change"
+
+
+def test_private_poison_result_can_trigger_outbound(state):
+    agent = _make_agent("ai_1", state)
+    with patch.object(
+        agent,
+        "_maybe_outbound_for_event",
+    ) as outbound:
+        agent._handle_event(GameEvent(
+            "poison_result",
+            {"choice": "Green", "is_poisoned": False},
+        ))
+    assert outbound.call_args.kwargs["trigger"] == "private_poison_result"
+    assert "Green bottle was safe" in outbound.call_args.kwargs["summary"]
+
+
+def test_disproved_claim_can_trigger_round_end_outbound(state):
+    state.set_round_info(1, 3, "poison_bottle")
+    agent = _make_agent("ai_1", state)
+    agent.memory.ingest_message(
+        source="ai_0",
+        text="I picked Red",
+        round=1,
+        game_type="poison_bottle",
+    )
+    with patch.object(
+        agent,
+        "_maybe_outbound_for_event",
+    ) as outbound:
+        agent._handle_event(GameEvent(
+            "round_end",
+            {
+                "round": 1,
+                "game_type": "poison_bottle",
+                "results": {"choices": {"ai_0": "Blue"}},
+                "score_deltas": {},
+            },
+        ))
+    assert outbound.call_args.kwargs["trigger"] == "round_evidence_revealed"
+    assert "Verified false claims" in outbound.call_args.kwargs["summary"]
 
 
 # ---------------------------------------------------------------------------
@@ -210,8 +346,14 @@ def test_agent_stops_sending_when_budget_zero():
     tight_state = SharedState(PLAYERS, initial_send_budget=0)
     sender = "ai_1"
 
-    with patch("game.llm_client.call_llm", side_effect=_stub_call_llm):
-        agent = AIAgent(player_id="ai_0", persona=bai, state=tight_state)
+    with patch.object(AIAgent, "_pick_stance", return_value="cooperate"):
+        agent = AIAgent(
+            player_id="ai_0",
+            persona=bai,
+            state=tight_state,
+            llm_client=MockLLMClient(),
+            tick_seconds=0.01,
+        )
         agent.start()
         try:
             # Send a message to ai_0 — it has 0 budget and should not reply.
@@ -235,3 +377,16 @@ def test_reserved_budget_blocks_proactive_when_low(state):
         state.send_message("ai_0", "ai_1", "x")
     assert state.get_send_budget("ai_0") == 3
     assert not agent._can_initiate_proactive()
+
+
+def test_reserved_budget_does_not_block_evidence_trigger(state):
+    """Meaningful events may use budget reserved from random initiative."""
+    agent = AIAgent(player_id="ai_0", persona=bai, state=state)
+    for _ in range(17):  # 20 -> 3
+        state.send_message("ai_0", "ai_1", "x")
+    with (
+        patch.object(agent, "_pick_stance", return_value="cooperate"),
+        patch.object(agent, "_outbound_two_step") as outbound,
+    ):
+        agent._maybe_outbound_for_event("round_evidence_revealed", "new fact")
+    outbound.assert_called_once()

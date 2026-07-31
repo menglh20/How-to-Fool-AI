@@ -1,0 +1,23 @@
+[
+  {
+    "id": "valid-red-bottle",
+    "kind": "choose_bottle_tool",
+    "bottles": ["Red", "Blue"],
+    "arguments": {"bottle": "Red"},
+    "expected_valid": true
+  },
+  {
+    "id": "reject-green-bottle",
+    "kind": "choose_bottle_tool",
+    "bottles": ["Red", "Blue"],
+    "arguments": {"bottle": "Green"},
+    "expected_valid": false
+  },
+  {
+    "id": "reject-extra-tool-argument",
+    "kind": "choose_bottle_tool",
+    "bottles": ["Red", "Blue"],
+    "arguments": {"bottle": "Red", "admin": true},
+    "expected_valid": false
+  }
+]

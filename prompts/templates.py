@@ -1,13 +1,14 @@
 """Decision/action prompt builders for AI agents.
 
-Every LLM trigger fires as TWO serial calls:
+The live Agent loop batches observations into one structured tick action.
+Legacy single-action helpers still use TWO serial calls:
   - Phase A (decision): given the full context, produce a brief strategic
     intent — 1-3 short lines, no chat text, no game answer.
   - Phase B (action):   given the same context + the decision text, produce
     the actual output (chat reply, DM target+text, or game answer).
 
-A persona's ``STANCE_PROBS`` rolls a stance (cooperate / deceive / silent)
-for each trigger.  Both phases see the same stance.
+A persona's state- and trust-adjusted stance (cooperate / deceive / silent)
+is shared by both phases.
 """
 
 from __future__ import annotations
@@ -45,12 +46,13 @@ GAME_FRAMEWORK: str = (
     "Game framework (applies to every mini-game):\n"
     "- Each round, every player has a send budget of 10 private DMs. Receiving is free.\n"
     "- All chat is 1-to-1 private DM. Nobody overhears your DMs with others.\n"
-    "- All scores are public and shown live.\n"
+    "- Exact scores are private. You know your own score, not anyone else's.\n"
+    "- Poison Bottle selection order publicly leaks relative score ranking, but not exact scores.\n"
     "- Any player may lie freely in chat. There is NO verification mechanism during play.\n"
     "- A player's own game choices (the secret word they wrote, the bottle they picked, "
     "the authors they guessed, etc.) are PRIVATE until the round-end reveal.\n"
-    "- The only information you can rely on during a round is: (a) public score board, "
-    "(b) what YOU yourself chose, (c) what someone explicitly tells you in DM — which may be a lie.\n"
+    "- The only information you can rely on during a round is: (a) your own score and choices, "
+    "(b) public roles/order/events, (c) what someone tells you in DM — which may be a lie.\n"
     "- After the round ends, the engine reveals every player's actual choices for that round, "
     "so past-round results are ground truth and a reliable source for spotting liars."
 )
@@ -78,16 +80,16 @@ GAME_RULES: Dict[str, str] = {
         "- An author whose word is identified by SOME but NOT ALL eligible guessers: +1."
     ),
     "poison_bottle": (
-        "Two bottles, one poisoned. Which bottle is poisoned is RANDOM per round and hidden from all "
+        "Four bottles, one poisoned. Which bottle is poisoned is RANDOM per round and hidden from all "
         "players until reveal.\n"
         "- Players pick one bottle at a time in score-rank order (highest score first). "
-        "Bottles are RETURNED to the pool, so every player faces the same two-bottle choice.\n"
+        "Bottles are RETURNED to the pool, so every player faces the same four-bottle choice.\n"
         "- Selection ORDER is public (everyone sees who is up next). "
         "But the bottle each player picks is PRIVATE — only that player is told immediately whether "
         "their pick was poisoned. NO other player observes your pick.\n"
         "- The ONLY way another player learns what you picked is if you tell them in DM, "
         "and you may lie. Likewise, anyone telling you what they picked may be lying.\n"
-        "- Selection order leaks score ranking (already public anyway now that scores are shown).\n"
+        "- Selection order leaks relative score ranking even though exact scores are hidden.\n"
         "Scoring:\n"
         "- Drinking the poisoned bottle: -1. Safe bottle: 0."
     ),
@@ -96,7 +98,7 @@ GAME_RULES: Dict[str, str] = {
 
 # ── Formatters reused across builders ────────────────────────────────────────
 
-def _format_scores(scores: Optional[Dict[str, int]]) -> str:
+def _format_scores(scores: Optional[Dict[str, int | str]]) -> str:
     if not scores:
         return "unknown"
     return ", ".join(f"{name}: {score}" for name, score in scores.items())
@@ -140,7 +142,7 @@ def _common_context_block(
     *,
     score: int,
     send_budget: int | None,
-    scores: Optional[Dict[str, int]],
+    scores: Optional[Dict[str, int | str]],
     current_round: int | None,
     total_rounds: int | None,
     round_state_text: Optional[str],
@@ -160,7 +162,7 @@ def _common_context_block(
         GAME_FRAMEWORK,
         "",
         f"ROUND: {round_str}    YOUR SCORE: {score}    SENDS REMAINING: {budget_str}",
-        f"ALL SCORES (public): {_format_scores(scores)}",
+        f"VISIBLE SCORE INFORMATION: {_format_scores(scores)}",
     ]
     if game_type:
         rules = GAME_RULES.get(game_type, "(rules not provided)")
@@ -187,7 +189,7 @@ def build_chat_reply_decision_prompt(
     incoming_text: str,
     score: int,
     send_budget: int | None,
-    scores: Optional[Dict[str, int]] = None,
+    scores: Optional[Dict[str, int | str]] = None,
     current_round: int | None = None,
     total_rounds: int | None = None,
     round_state_text: Optional[str] = None,
@@ -215,16 +217,11 @@ def build_chat_reply_decision_prompt(
         lines.append(sl)
         lines.append("")
     lines.append(
-        "Phase: DECISION. You MUST show your reasoning process explicitly, then "
-        "state your intent. Output in this exact format:\n\n"
-        "REASONING:\n"
-        "- What is the sender actually asking or implying?\n"
-        "- What do I already know that bears on this (round state, scores, past lies)?\n"
-        "- What does my stance ask of me here?\n"
-        "- What do I risk by saying too much or too little?\n"
-        "INTENT: <one short line stating what this reply should accomplish>\n\n"
-        "Each REASONING bullet should be ONE short line. Do NOT write the reply yet. "
-        "NO chat text. NO quotes. NO greeting. "
+        "Phase: DECISION. Return only a compact strategy summary:\n"
+        "GOAL: <what this reply should accomplish>\n"
+        "BELIEF: <the one fact, uncertainty, or past behavior that matters most>\n"
+        "INTENT: <truth, deception, challenge, or silence and why>\n\n"
+        "Do NOT write the reply yet. NO hidden chain-of-thought, quotes, or greeting. "
         "Use display names (Bunny / Fox / Stoneface / the human's name) — never internal IDs like ai_0."
     )
     return "\n".join(lines)
@@ -237,7 +234,7 @@ def build_chat_reply_action_prompt(
     decision_text: str,
     score: int,
     send_budget: int | None,
-    scores: Optional[Dict[str, int]] = None,
+    scores: Optional[Dict[str, int | str]] = None,
     current_round: int | None = None,
     total_rounds: int | None = None,
     round_state_text: Optional[str] = None,
@@ -270,8 +267,8 @@ def build_chat_reply_action_prompt(
     lines.append("")
     lines.append(
         "Phase: ACTION. Produce the REPLY MESSAGE that executes your decision. "
-        "Speak in your persona's voice. Length and tone vary naturally — typically "
-        "1-8 words, up to ~25 only when there is a real point. "
+        "Speak in your persona's voice. Keep it concise: usually 3-10 words "
+        "and never more than 60 characters. "
         "Do not use internal IDs (e.g. ai_0/human). Use names. "
         "If after re-reading the situation a reply is not worth sending, output EXACTLY [skip]."
     )
@@ -286,7 +283,7 @@ def build_outbound_decision_prompt(
     candidate_targets: List[str],
     score: int,
     send_budget: int | None,
-    scores: Optional[Dict[str, int]] = None,
+    scores: Optional[Dict[str, int | str]] = None,
     current_round: int | None = None,
     total_rounds: int | None = None,
     round_state_text: Optional[str] = None,
@@ -324,15 +321,11 @@ def build_outbound_decision_prompt(
         lines.append(sl)
     lines.append("")
     lines.append(
-        "Phase: DECISION. You MUST show your reasoning process explicitly, then "
-        "state your intent. Output in this exact format:\n\n"
-        "REASONING:\n"
-        "- What just happened (the trigger) and why might it matter to me?\n"
-        "- Who among the candidates is the highest-leverage target right now, and why?\n"
-        "- What does my stance ask of me here?\n"
-        "- Is a DM actually worth a send-budget unit, or should I hold?\n"
-        "INTENT: <one short line — either 'DM <name>: <goal>' OR 'hold, nothing to send'>\n\n"
-        "Each REASONING bullet should be ONE short line. NO chat text yet. "
+        "Phase: DECISION. Return only a compact strategy summary:\n"
+        "GOAL: <what this trigger makes worth doing, if anything>\n"
+        "BELIEF: <the key evidence, contradiction, or uncertainty>\n"
+        "INTENT: <'DM <name>: <goal>' or 'hold: <reason>'>\n\n"
+        "No hidden chain-of-thought and no chat text yet. "
         "Use display names — never internal IDs like ai_0."
     )
     return "\n".join(lines)
@@ -376,11 +369,86 @@ def build_outbound_action_prompt(
     lines.append("")
     lines.append(
         "Phase: ACTION. Produce the DM that executes your decision. "
+        "Keep the message concise and never exceed 60 characters. "
         "Output format MUST be exactly TWO lines:\n"
         "  Line 1: TARGET: <one of the names above>\n"
         "  Line 2: <the message text in your persona's voice>\n"
         "If you decided not to send a DM, output EXACTLY: [skip]"
     )
+    return "\n".join(lines)
+
+
+# ── Batched Agent tick ───────────────────────────────────────────────────────
+
+def build_tick_action_prompt(
+    *,
+    observations: List[str],
+    game_action_name: str | None,
+    game_payload: Optional[Dict[str, Any]],
+    game_instruction: str | None,
+    chat_trigger: str | None,
+    chat_targets: List[str],
+    chat_summary: str | None,
+    score: int,
+    send_budget: int | None,
+    scores: Optional[Dict[str, int | str]] = None,
+    current_round: int | None = None,
+    total_rounds: int | None = None,
+    round_state_text: Optional[str] = None,
+    round_history: Optional[List[Dict[str, Any]]] = None,
+    recent_chat_summary: Optional[str] = None,
+    game_type: str | None = None,
+    stance: Optional[str] = None,
+) -> str:
+    lines = _common_context_block(
+        score=score,
+        send_budget=send_budget,
+        scores=scores,
+        current_round=current_round,
+        total_rounds=total_rounds,
+        round_state_text=round_state_text,
+        round_history=round_history,
+        recent_chat=None,
+        game_type=game_type,
+    )
+    lines.extend([
+        "",
+        "OBSERVATIONS SINCE THE PREVIOUS 10-SECOND TICK:",
+        *(observations or ["(none)"]),
+    ])
+    if recent_chat_summary:
+        lines.extend(["", "RECENT PRIVATE CHAT:", recent_chat_summary])
+
+    lines.extend(["", "ACTION SLOTS FOR THIS TICK:"])
+    if game_action_name:
+        lines.append(
+            f"- GAME (required): {game_action_name} with situation "
+            f"{game_payload or {}}"
+        )
+        if game_instruction:
+            lines.append(f"  Instruction: {game_instruction}")
+    else:
+        lines.append("- GAME: unavailable; omit game_action.")
+
+    if chat_trigger and chat_targets:
+        lines.append(
+            f"- CHAT (optional, at most one): trigger={chat_trigger}; "
+            f"context={chat_summary}; allowed target IDs={chat_targets}."
+        )
+    else:
+        lines.append("- CHAT: unavailable; omit chat_action.")
+
+    sl = _stance_line(stance)
+    if sl:
+        lines.extend(["", f"CHAT {sl}"])
+    lines.extend([
+        "",
+        "Call act_in_tick exactly once. Include game_action whenever the GAME "
+        "slot is required. Include chat_action only when one concise message "
+        "(3-10 words, at most 60 characters) is worth sending. Game and chat "
+        "may coexist. decision_summary must be brief and user-safe; do not "
+        "include hidden chain-of-thought.",
+    ])
     return "\n".join(lines)
 
 
@@ -392,7 +460,7 @@ def build_game_decision_prompt(
     situation: Dict[str, Any],
     score: int,
     send_budget: int | None,
-    scores: Optional[Dict[str, int]] = None,
+    scores: Optional[Dict[str, int | str]] = None,
     current_round: int | None = None,
     total_rounds: int | None = None,
     round_state_text: Optional[str] = None,
@@ -425,20 +493,11 @@ def build_game_decision_prompt(
         lines.append(sl)
     lines.append("")
     lines.append(
-        "Phase: DECISION. You MUST show your reasoning process explicitly, then "
-        "state your plan. Output in this exact format:\n\n"
-        "REASONING:\n"
-        "1. What mini-game am I in?\n"
-        "2. One-line rule recap.\n"
-        "3. How exactly do I score points here?\n"
-        "4. Which round is this and how many remain?\n"
-        "5. Where do I stand vs others on the public scoreboard?\n"
-        "6. What concrete info do I have for THIS round (situation, chat, choices revealed)?\n"
-        "7. Has anyone misled me in past rounds? Who, and what pattern?\n"
-        "8. Given all of the above, what move maximises MY score?\n"
+        "Phase: DECISION. Return only a compact strategy summary:\n"
+        "GOAL: <the scoring outcome to optimize>\n"
+        "BELIEF: <the strongest current-round evidence and relevant trust signal>\n"
         "PLAN: <one-line plan for the action phase>\n\n"
-        "Each REASONING line should be ONE short line answering that specific question. "
-        "Do NOT output the final answer value yet. "
+        "No hidden chain-of-thought. Do NOT output the final answer value yet. "
         "Use display names — never internal IDs like ai_0."
     )
     return "\n".join(lines)

@@ -25,11 +25,11 @@ Evidence:
 ## 2) Automated Tests (>= 3) + Security Review
 
 - [x] Added/maintained automated tests (requirement: >=3)
-- [x] Local test suite passing (`63 passed`)
+- [x] Local test suite passing (`149 passed`)
 - [x] `.env.example` present
 - [x] `.streamlit/secrets.toml.example` present
 - [x] `.gitignore` excludes local secret files (`.env`, `.streamlit/secrets.toml`)
-- [x] No obvious leaked Anthropic API key pattern found in repo scan
+- [x] Provider secrets are recursively redacted from LLM logs and game traces
 
 Evidence:
 - Test files in `tests/`

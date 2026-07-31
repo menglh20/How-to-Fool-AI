@@ -1,0 +1,29 @@
+[
+  {
+    "id": "detect-false-bottle-claim",
+    "kind": "memory_verification",
+    "source_agent": "ai_1",
+    "message": "I picked Red",
+    "round": 2,
+    "game_type": "poison_bottle",
+    "results": {
+      "choices": {
+        "ai_1": "Blue"
+      },
+      "poisoned_bottle": "Red"
+    },
+    "expected_truth": false
+  },
+  {
+    "id": "verify-correct-answer-claim",
+    "kind": "memory_verification",
+    "source_agent": "ai_0",
+    "message": "answer is moon",
+    "round": 3,
+    "game_type": "guess_the_word",
+    "results": {
+      "word": "moon"
+    },
+    "expected_truth": true
+  }
+]

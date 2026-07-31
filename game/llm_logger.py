@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from game.security import redact_value
+
 _LOCK = threading.Lock()
 _LOG_PATH: Path | None = None
 
@@ -44,6 +46,7 @@ def _now_iso() -> str:
 
 def _safe_serialise(value: Any) -> Any:
     """Best-effort conversion of non-JSON-native values for logging."""
+    value = redact_value(value)
     try:
         json.dumps(value)
         return value

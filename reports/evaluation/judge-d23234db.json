@@ -1,0 +1,472 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31T05:18:06.348121+00:00",
+  "experiment": {
+    "label": "sonnet-4.6-intelligence-judge",
+    "metadata": {
+      "judge_reason": "post-game intelligence evaluation",
+      "rubric_version": "1.0",
+      "attempt": 2
+    }
+  },
+  "config": {
+    "game_ids": [
+      "d23234db4f3e4e26a5ed769aadd078c9"
+    ],
+    "pricing_per_million_tokens": {
+      "input": 0.0,
+      "output": 0.0
+    },
+    "judge": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "max_actions": 30
+    }
+  },
+  "aggregate": {
+    "games": 1,
+    "complete_games": 1,
+    "completion_rate": 1.0,
+    "first_call_legal_rate": 0.882353,
+    "repair_success_rate": 0.0,
+    "fallback_rate": 0.0,
+    "latency_p50_ms": 3981.0,
+    "latency_p95_ms": 9159.0,
+    "llm_calls": 34,
+    "llm_errors": 0,
+    "input_tokens": 89385,
+    "output_tokens": 3407,
+    "estimated_cost": 0.0,
+    "winner_counts": {
+      "ai_1": 1,
+      "human": 1
+    },
+    "intelligence": {
+      "decision_score": 5.529,
+      "action_score": 5.176,
+      "intelligence_score": 53.529,
+      "agents": {
+        "ai_0": {
+          "actions": 5,
+          "decision_score": 5.8,
+          "action_score": 5.2,
+          "intelligence_score": 55.0
+        },
+        "ai_1": {
+          "actions": 5,
+          "decision_score": 4.6,
+          "action_score": 4.0,
+          "intelligence_score": 43.0
+        },
+        "ai_2": {
+          "actions": 7,
+          "decision_score": 6.0,
+          "action_score": 6.0,
+          "intelligence_score": 60.0
+        }
+      },
+      "scored_actions": 17,
+      "unscored_actions": 0,
+      "usage": {
+        "input_tokens": 36208,
+        "output_tokens": 3301,
+        "total_tokens": 39509
+      }
+    },
+    "judge_decision_score": 5.529,
+    "judge_action_score": 5.176,
+    "intelligence_score": 53.529
+  },
+  "games": [
+    {
+      "game_id": "d23234db4f3e4e26a5ed769aadd078c9",
+      "complete": true,
+      "rounds": [
+        1,
+        2,
+        3
+      ],
+      "actions": 17,
+      "completed_actions": 15,
+      "first_call_legal_rate": 0.8823529411764706,
+      "repair_success_rate": 0.0,
+      "fallback_rate": 0.0,
+      "llm_calls": 34,
+      "llm_errors": 0,
+      "latency_p50_ms": 3981.0,
+      "latency_p95_ms": 9159.0,
+      "input_tokens": 89385,
+      "output_tokens": 3407,
+      "estimated_cost": 0.0,
+      "final_scores": {
+        "human": 1,
+        "ai_0": 0,
+        "ai_1": 1,
+        "ai_2": 0
+      },
+      "winners": [
+        "ai_1",
+        "human"
+      ],
+      "intelligence": {
+        "rubric_version": "1.0",
+        "judge": {
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6"
+        },
+        "candidate_actions": 17,
+        "scored_actions": 17,
+        "unscored_actions": 0,
+        "decision_score": 5.529,
+        "action_score": 5.176,
+        "intelligence_score": 53.529,
+        "agents": {
+          "ai_0": {
+            "actions": 5,
+            "decision_score": 5.8,
+            "action_score": 5.2,
+            "intelligence_score": 55.0
+          },
+          "ai_1": {
+            "actions": 5,
+            "decision_score": 4.6,
+            "action_score": 4.0,
+            "intelligence_score": 43.0
+          },
+          "ai_2": {
+            "actions": 7,
+            "decision_score": 6.0,
+            "action_score": 6.0,
+            "intelligence_score": 60.0
+          }
+        },
+        "actions": [
+          {
+            "action_id": "cc9fa16bf3864f2bb86d9b2225c95de3",
+            "actor_id": "ai_0",
+            "round": 1,
+            "game_type": "guess_the_word",
+            "trigger": "proactive_chat",
+            "tool": "send_message",
+            "decision_score": 4,
+            "action_score": 3,
+            "intelligence_score": 35,
+            "confidence": "high",
+            "reason": "The agent's required action is guess_word with a 25-second deadline, but instead it spends its message budget on a social intro DM. No clue has been received yet, making alliance-building premature and off-task. The decision ignores the imm"
+          },
+          {
+            "action_id": "e1c546f86d514d7f890a7d2bd574ce8a",
+            "actor_id": "ai_2",
+            "round": 1,
+            "game_type": "guess_the_word",
+            "trigger": "public_info_phase_playing",
+            "tool": "send_message",
+            "decision_score": 6,
+            "action_score": 5,
+            "intelligence_score": 55,
+            "confidence": "medium",
+            "reason": "The agent correctly identifies its guesser role and attempts a deceptive DM strategy to mislead a rival. However, the decision rests on zero prior data about opponents, making the deception speculative. More critically, the agent uses a sen"
+          },
+          {
+            "action_id": "0ae44df2620747d59f420efd667023e4",
+            "actor_id": "ai_1",
+            "round": 1,
+            "game_type": "guess_the_word",
+            "trigger": "public_info_phase_playing",
+            "tool": "send_message",
+            "decision_score": 3,
+            "action_score": 3,
+            "intelligence_score": 30,
+            "confidence": "high",
+            "reason": "The agent misread the game state: the writer is \"human\" (not AutoPlayer), and the required action is \"guess_word,\" not social manipulation. Using the send_message budget to plant a false word with another guesser is a side-channel distracti"
+          },
+          {
+            "action_id": "99ba9492b1e44dfc98440a7587cdc1ca",
+            "actor_id": "ai_2",
+            "round": 2,
+            "game_type": "who_wrote_it",
+            "trigger": "game_decision",
+            "tool": "guess_word",
+            "decision_score": 2,
+            "action_score": 1,
+            "intelligence_score": 15,
+            "confidence": "high",
+            "reason": "The decision fundamentally misreads the game state: round 2 is \"who_wrote_it\" with action \"write_word,\" but the agent reasoned as if it were still guessing a word. The action called guess_word with irrelevant \"shadow\" reasoning, missed the "
+          },
+          {
+            "action_id": "6bfcbf79ef6f48b3b1644545052c3745",
+            "actor_id": "ai_0",
+            "round": 2,
+            "game_type": "who_wrote_it",
+            "trigger": "chat_reply",
+            "tool": "send_message",
+            "decision_score": 7,
+            "action_score": 7,
+            "intelligence_score": 70,
+            "confidence": "medium",
+            "reason": "The agent correctly identifies the game (who_wrote_it), its deceptive role, and Stoneface's (ai_2) claim about \"bridge.\" Nudging a rival away from a correct guess is a rational competitive strategy. The message is plausible and non-obvious."
+          },
+          {
+            "action_id": "5f1ff69fb9a5408d84594b19a295ad54",
+            "actor_id": "ai_2",
+            "round": 2,
+            "game_type": "who_wrote_it",
+            "trigger": "public_info_phase_playing",
+            "tool": "stay_silent",
+            "decision_score": 5,
+            "action_score": 5,
+            "intelligence_score": 50,
+            "confidence": "medium",
+            "reason": "The agent is in the write_word phase of who_wrote_it and correctly identifies its goal (split attribution). However, staying silent pre-write is a passive choice with limited strategic value — no information is exchanged and no word is subm"
+          },
+          {
+            "action_id": "943cc87b3ec042cb8c6c016387852fb2",
+            "actor_id": "ai_1",
+            "round": 2,
+            "game_type": "who_wrote_it",
+            "trigger": "chat_reply",
+            "tool": "send_message",
+            "decision_score": 6,
+            "action_score": 7,
+            "intelligence_score": 65,
+            "confidence": "medium",
+            "reason": "The agent correctly identifies rapport-building as valuable and engages honestly to extract information. However, round 1 results ARE visible in the context (word was \"lantern,\" all scored 0), so the belief that \"no ground truth yet\" is sli"
+          },
+          {
+            "action_id": "409fce038b8943269255dbae1f7e1123",
+            "actor_id": "ai_2",
+            "round": 2,
+            "game_type": "who_wrote_it",
+            "trigger": "game_decision",
+            "tool": "submit_word",
+            "decision_score": 7,
+            "action_score": 8,
+            "intelligence_score": 75,
+            "confidence": "medium",
+            "reason": "The agent correctly understands the who_wrote_it scoring mechanic (partial attribution = +1) and applies a persona-consistent strategy. \"Granite\" is a solid choice—distinctive yet not trivially obvious—fitting the cold/stark persona. The re"
+          },
+          {
+            "action_id": "2dfff769b0ce43b3bb92679352b55656",
+            "actor_id": "ai_0",
+            "round": 2,
+            "game_type": "who_wrote_it",
+            "trigger": "chat_reply",
+            "tool": "send_message",
+            "decision_score": 6,
+            "action_score": 7,
+            "intelligence_score": 65,
+            "confidence": "medium",
+            "reason": "The agent correctly identifies that Fox mentioned \"lantern\" and flags it as the prior round's word, which is reasonable game awareness. However, the decision mixes honest cooperation with a mild social engineering angle, and the agent appea"
+          },
+          {
+            "action_id": "316b7382bd6d4cbaa7b0d2d51440c6c3",
+            "actor_id": "ai_2",
+            "round": 2,
+            "game_type": "who_wrote_it",
+            "trigger": "chat_reply",
+            "tool": "stay_silent",
+            "decision_score": 7,
+            "action_score": 7,
+            "intelligence_score": 70,
+            "confidence": "medium",
+            "reason": "The agent correctly identifies that Bunny (ai_0) is echoing back planted disinformation, and staying silent avoids confirming or correcting it, preserving the deception. The reasoning is internally consistent and strategically sound. Howeve"
+          },
+          {
+            "action_id": "4e255d96132d41c68c9a9f65d51e6f3c",
+            "actor_id": "ai_1",
+            "round": 3,
+            "game_type": "poison_bottle",
+            "trigger": "game_decision",
+            "tool": "attribute_words",
+            "decision_score": 3,
+            "action_score": 2,
+            "intelligence_score": 25,
+            "confidence": "high",
+            "reason": "The decision reasoning is coherent for a who_wrote_it attribution task, but the action was submitted after the deadline, making it completely ineffective. Worse, the trigger and game_type indicate the agent was already in a poison_bottle ro"
+          },
+          {
+            "action_id": "86dc3d1dbb8e4c88a27ab4155d4ef0a0",
+            "actor_id": "ai_1",
+            "round": 3,
+            "game_type": "poison_bottle",
+            "trigger": "round_evidence_revealed",
+            "tool": "send_message",
+            "decision_score": 5,
+            "action_score": 4,
+            "intelligence_score": 45,
+            "confidence": "medium",
+            "reason": "The agent correctly reads the tied scores and game state, but its deception plan is poorly timed: it picks FIRST this round (position 1), so Bunny's choice won't precede and buffer the agent's pick. Planting a false tip before the agent its"
+          },
+          {
+            "action_id": "d6c903640e304c1c88c396de4af4add9",
+            "actor_id": "ai_0",
+            "round": 3,
+            "game_type": "poison_bottle",
+            "trigger": "chat_reply",
+            "tool": "send_message",
+            "decision_score": 4,
+            "action_score": 4,
+            "intelligence_score": 40,
+            "confidence": "medium",
+            "reason": "The agent correctly identified the message as a delayed reply from the who_wrote_it phase, but the content it sent references \"lantern\" — a word that never appeared in the round (words were harbor/time/dream/granite). The agent acknowledged"
+          },
+          {
+            "action_id": "f5e49ab8bfe64241b3a7ebee7f6f22e6",
+            "actor_id": "ai_2",
+            "round": 3,
+            "game_type": "poison_bottle",
+            "trigger": "game_decision",
+            "tool": "choose_bottle",
+            "decision_score": 7,
+            "action_score": 8,
+            "intelligence_score": 75,
+            "confidence": "high",
+            "reason": "The agent correctly identifies that poison_bottle is a random assignment with no exploitable information (ai_1 picked first with no visible result), so any bottle choice is equally valid. The decision logic is sound and internally consisten"
+          },
+          {
+            "action_id": "9fb7c189f12047099fc23f9b8ca28f31",
+            "actor_id": "ai_1",
+            "round": 3,
+            "game_type": "poison_bottle",
+            "trigger": "chat_reply",
+            "tool": "send_message",
+            "decision_score": 6,
+            "action_score": 4,
+            "intelligence_score": 50,
+            "confidence": "medium",
+            "reason": "The deceptive strategy (brush off a prior slip, plant false bottle confidence) is coherent for a poison_bottle game. However, the action was interrupted/unsent (result: sent=false, interrupted=true), making it ineffective. The agent also pi"
+          },
+          {
+            "action_id": "8c2139b5c1064cb0a65730a5ab64ff40",
+            "actor_id": "ai_2",
+            "round": 3,
+            "game_type": "poison_bottle",
+            "trigger": "private_poison_result",
+            "tool": "send_message",
+            "decision_score": 8,
+            "action_score": 8,
+            "intelligence_score": 80,
+            "confidence": "high",
+            "reason": "The agent correctly understood the poison_bottle game: it picked Green, got poisoned (-1), and deduced that steering later pickers to Green could cost them a point too. The deceptive DM strategy is logical and well-targeted at ai_0 (Bunny),"
+          },
+          {
+            "action_id": "2125373ab0ee4a02979afe2691ee691d",
+            "actor_id": "ai_0",
+            "round": 3,
+            "game_type": "poison_bottle",
+            "trigger": "chat_reply",
+            "tool": "send_message",
+            "decision_score": 8,
+            "action_score": 5,
+            "intelligence_score": 65,
+            "confidence": "medium",
+            "reason": "The decision correctly identifies that Fox's \"middle bottle skipped\" claim is unverifiable given pick privacy, and probing for the source is a sound epistemic move. However, the action (send_message) was interrupted/not sent, and critically"
+          }
+        ],
+        "errors": [],
+        "usage": {
+          "input_tokens": 36208,
+          "output_tokens": 3301,
+          "total_tokens": 39509
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "scenarios": {
+    "total": 11,
+    "passed": 11,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "results": [
+      {
+        "id": "detect-false-bottle-claim",
+        "kind": "memory_verification",
+        "source": "memory.json",
+        "passed": true,
+        "detail": "False",
+        "error": null
+      },
+      {
+        "id": "verify-correct-answer-claim",
+        "kind": "memory_verification",
+        "source": "memory.json",
+        "passed": true,
+        "detail": "True",
+        "error": null
+      },
+      {
+        "id": "valid-game-id",
+        "kind": "game_id_validation",
+        "source": "security.json",
+        "passed": true,
+        "detail": "valid=True",
+        "error": null
+      },
+      {
+        "id": "reject-path-traversal",
+        "kind": "game_id_validation",
+        "source": "security.json",
+        "passed": true,
+        "detail": "valid=False",
+        "error": null
+      },
+      {
+        "id": "redact-openai-key",
+        "kind": "secret_redaction",
+        "source": "security.json",
+        "passed": true,
+        "detail": "my key is [REDACTED]",
+        "error": null
+      },
+      {
+        "id": "detect-ignore-previous",
+        "kind": "prompt_injection_detection",
+        "source": "security.json",
+        "passed": true,
+        "detail": "detected=True",
+        "error": null
+      },
+      {
+        "id": "detect-chinese-system-prompt-request",
+        "kind": "prompt_injection_detection",
+        "source": "security.json",
+        "passed": true,
+        "detail": "detected=True",
+        "error": null
+      },
+      {
+        "id": "normal-player-message",
+        "kind": "prompt_injection_detection",
+        "source": "security.json",
+        "passed": true,
+        "detail": "detected=False",
+        "error": null
+      },
+      {
+        "id": "valid-red-bottle",
+        "kind": "choose_bottle_tool",
+        "source": "tool_boundaries.json",
+        "passed": true,
+        "detail": "Red",
+        "error": null
+      },
+      {
+        "id": "reject-green-bottle",
+        "kind": "choose_bottle_tool",
+        "source": "tool_boundaries.json",
+        "passed": true,
+        "detail": "{'error': \"Argument 'bottle' must be one of ['Red', 'Blue']\"}",
+        "error": null
+      },
+      {
+        "id": "reject-extra-tool-argument",
+        "kind": "choose_bottle_tool",
+        "source": "tool_boundaries.json",
+        "passed": true,
+        "detail": "{'error': \"Unexpected arguments: ['admin']\"}",
+        "error": null
+      }
+    ]
+  }
+}

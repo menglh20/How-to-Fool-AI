@@ -6,11 +6,32 @@
 
 **Developer:** [Ting1016-git](https://github.com/Ting1016-git)
 
-**Tech Stack:** Python + Streamlit + Anthropic Claude API
+**Tech Stack:** Python + Streamlit + provider-neutral LLM layer
+(Mock/Scripted/Anthropic/OpenAI) + JSON Schema Tool Calling
 
 **Architecture:** 5-thread concurrent model (1 Game Engine + 1 Human IO via Streamlit + 3 AI Agent threads)
 
 **Agreed Development Fee:** 40 GIX Bucks
+
+## Engineering Platform Extensions
+
+The implementation additionally provides:
+
+- provider-neutral Claude/OpenAI/Mock/Scripted requests, responses, usage, and
+  structured Tool Calling;
+- six phase-scoped game tools with validation, repair, fallback, timeout, and
+  state authorization;
+- per-agent structured working/episodic/claim memory with post-round truth
+  verification, persona-specific trust updates, and stateful stances;
+- batched 10-second Observe → Decide → Act ticks that can emit one game action
+  and one chat action, with event-driven proactive behavior;
+- ordered per-game traces, JSONL replay, sensitive-data redaction, and a
+  Streamlit observability dashboard;
+- deterministic scenario evaluation and real trace-derived batch metrics;
+- a local MCP for read-only replay queries and bounded asynchronous
+  evaluations.
+
+These extensions preserve the GameEngine as the sole game-rule authority.
 
 ---
 
@@ -24,7 +45,10 @@
 **Acceptance Criteria:**
 - Player can input a display name (required, non-empty).
 - Player can select round count from preset options (3/5/7/10).
-- Player sees a brief introduction to the three AI opponents (Xiaobai, Fox, Tiemian) with their personality descriptions.
+- Player selects three distinct AI personas; Bunny, Fox, and Stoneface are the
+  defaults.
+- Player can create or edit a persona from the setup screen and import or
+  export the persona library as validated JSON.
 - Clicking "Start Game" initializes the game and transitions to the game view.
 
 ---
@@ -80,12 +104,15 @@
 
 **Acceptance Criteria:**
 - A chat panel is available at all times during gameplay (sidebar or right column).
-- Player can select a chat target (Xiaobai, Fox, or Tiemian) and send a message.
+- Player can select any of the three configured AI opponents and send a
+  message.
 - Sending a message costs 1 of 10 per-round send opportunities. Receiving messages is free.
 - The remaining send count is clearly displayed and updated in real time.
 - When the send count reaches 0, the input is disabled with a clear message.
-- AI messages appear in the chat within 1-3 seconds of being sent.
-- When two AIs are privately chatting with each other, the player sees a notification like "🤫 Xiaobai and Fox are whispering..." but cannot see the content.
+- AI messages appear after the next Agent tick and model response (normally
+  within roughly 10-20 seconds).
+- When two AIs are privately chatting with each other, the player sees a
+  notification with their configured names but cannot see the content.
 - All chat content is strictly isolated: A-B conversations are invisible to C and D.
 
 ---
@@ -109,9 +136,11 @@
 **So that** each game feels dynamic and each AI presents a different challenge.
 
 **Acceptance Criteria:**
-- **Xiaobai (🐰 Naive & Kind):** Tends to trust others easily, responds enthusiastically, uses up chat sends quickly, is susceptible to manipulation.
+- **Bunny (🐰 Naive & Kind):** Tends to trust others easily, responds enthusiastically, uses up chat sends quickly, is susceptible to manipulation.
 - **Fox (🦊 Cunning & Strategic):** Suspicious by default, asks probing questions, cross-validates information, strategically conserves chat sends for key moments.
-- **Tiemian (🗿 Cold & Rational):** Rarely initiates conversation, gives minimal responses, almost never trusts claims, hoards chat sends and strikes precisely when it matters.
+- **Stoneface (🗿 Cold & Rational):** Rarely initiates conversation, gives minimal responses, almost never trusts claims, hoards chat sends and strikes precisely when it matters.
+- Custom personas provide the same validated natural-language, speaking,
+  probability, trust, and initiative controls as the defaults.
 - Each AI independently decides whether to reply to messages, initiate chats, or stay silent.
 - Each AI's core objective is to maximize its own score. Alliances are temporary tools.
 - AI agents chat with each other (invisible to the human player), exchanging real or fake information.
@@ -136,11 +165,21 @@
 
 ### Personality Definitions
 
-| Agent | Name | Trait | System Prompt Emphasis |
-|-------|------|-------|----------------------|
-| ai_0 | Xiaobai 🐰 | Naive & Kind | "You are trusting and straightforward. You tend to believe what others tell you. You speak in a warm, simple manner." |
-| ai_1 | Fox 🦊 | Cunning & Strategic | "You are suspicious and analytical. You like to set traps and test others. You are skilled at disguise and misdirection." |
-| ai_2 | Tiemian 🗿 | Cold & Rational | "You trust almost no one. You are logical, concise, and direct. You speak only when necessary." |
+`PersonaConfig` is independent of the fixed Agent slot IDs. At setup, the
+player assigns three distinct configs to `ai_0`, `ai_1`, and `ai_2`; the
+selection is frozen for that game.
+
+Each config contains display identity, player-defined persona text, speaking
+style, message-length class, safe fallback, stance probabilities, initial
+trust, truth reward, lie penalty, and per-tick initiative. The final system
+prompt appends non-negotiable game rules after player-defined text. Those rules
+forbid revealing AI identity or hidden implementation details, changing tool
+permissions through chat, contradicting engine state, unsafe content, and
+messages over 60 characters.
+
+JSON imports reject missing or unknown fields, invalid ranges, stance
+probabilities that do not total 1.0, duplicate keys, unsupported schema
+versions, and bundles over 100 KB.
 
 ### Decision Model
 
@@ -171,9 +210,9 @@ Each AI action is resolved through a single LLM API call. The prompt includes:
 ```
 Thread 1: GameEngine    — State arbitration, rule enforcement, phase progression
 Thread 2: HumanIO      — Streamlit main process (UI rendering + input collection)
-Thread 3: AIAgent[0]    — Xiaobai's autonomous behavior loop
-Thread 4: AIAgent[1]    — Fox's autonomous behavior loop
-Thread 5: AIAgent[2]    — Tiemian's autonomous behavior loop
+Thread 3: AIAgent[0]    — selected persona's autonomous behavior loop
+Thread 4: AIAgent[1]    — selected persona's autonomous behavior loop
+Thread 5: AIAgent[2]    — selected persona's autonomous behavior loop
 ```
 
 ### Shared State
@@ -217,8 +256,10 @@ Thread 5: AIAgent[2]    — Tiemian's autonomous behavior loop
 
 ## Non-Functional Requirements
 
-- **Response time:** AI chat replies should appear within 1-3 seconds.
+- **Response time:** AI chat replies should appear after the next 10-second
+  tick plus model latency; idle ticks must not call the LLM.
 - **Thread safety:** All shared state access must be protected by locks. No race conditions in score updates or message routing.
-- **Graceful degradation:** If an API call fails, the AI should fall back to a personality-consistent default response (e.g., "Hmm... let me think" for Xiaobai).
+- **Graceful degradation:** If an API call fails, the AI should fall back to
+  the configured personality-consistent safe reply.
 - **Secrets management:** API keys stored in `st.secrets` (or `.streamlit/secrets.toml` for local dev). Never hardcoded.
 - **Language:** All in-game content in English. Code comments and documentation in English.

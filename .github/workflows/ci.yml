@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pytest tests -q
+      - name: Run deterministic evaluation scenarios
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from evals.scenarios import run_scenarios
+          report = run_scenarios(Path("evals/scenarios"))
+          assert report["failed"] == 0, report
+          print(report)
+          PY
